@@ -1,0 +1,160 @@
+---
+title: "NYPD Project"
+author: "Dong A Lee"
+date: '2022-05-17'
+output:
+  pdf_document: default
+  html_document: default
+---
+### R Markdown Project - NYPD Shooting Incident Data 
+
+### Project Step 1
+I want to answer the questions:
+*In which bourough of NY do the most incidents occur?
+*How are the ages of the perpetrator and victims related?
+*Is this dataset complete? Meaning, is there a reason to believe that pieces of the data is missing?
+
+## Packages used:
+```{r load-packages, include=FALSE, echo=TRUE}
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(lubridate)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document is my data analysis project using the NYPD Shooting Dataset
+
+First, import the data from on online source using its url
+The url will be saved as a variable named "url_in"
+
+```{r import_files, echo=TRUE}
+# Import necessary file via its url input
+
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+```
+
+Read in the csv data contained in the url
+Save the csv into a variable called "incidents_NYPD"
+
+```{r read_file, echo=TRUE}
+
+incidents_NYPD <- read_csv(url_in)
+head(incidents_NYPD)
+```
+### Project Step 2
+## Add a summary of my data
+This datset is a table that describes shooting reports in NYC historically, dating back to 2006. It has 19 columns, with column headers such as Incident_key, occur_date, boro, precinct, etc. Some fields have NA or Unknowns as data points. Occur date is in character format, so this may have to be changed if I am working in myd format. 
+
+```{r summarize_file, echo=TRUE}
+summary(incidents_NYPD)
+
+```
+## Clean Data and Analyze
+
+Currently, the data is in its original format
+I will clean the data so that it only shows the columns that I want to utilize for my analysis
+
+I am not interested in the location aspects of this dataset, so I will clear the columns:
+Latitude, Longitude, and Lon_Lat, X_COORD_CD, and Y_COORD_CD, LOCATION_DESC
+
+I will also change the OCCUR_DATE column so that it is in the myd (month, date, year) format rather than characters
+View the top five rows of the data as it currently is, by using the head() function
+
+```{r clean_data, echo=TRUE}
+
+incidents_NYPD <- incidents_NYPD %>%
+  select(-c(Latitude, Longitude, Lon_Lat, X_COORD_CD, Y_COORD_CD))   # Clearing columns
+  incidents_NYPD$OCCUR_DATE <- mdy(incidents_NYPD$OCCUR_DATE)   # Change date to myd format
+
+head(incidents_NYPD)
+```
+## How to handle missimg data
+If I find that there's missing data, I can do outside research to find if there any appropriate datasets elsewhere. Once I find a good source for supplemental data, I will import it in, clean it, and join appropriate columns into my data set
+
+## Analysis 1 Conclusion - By bourough within NY:
+I want to analyze my dataset to see how many incidents have occured in each borough of NY ("boro")
+First, group by the boro column and occur dates
+Then, sum up the occur dates per each boro to find out the sum of incidents by boro
+
+Visualize the number of incidents by a bar chart
+Boro on the x-axis, and the incidents_per_boro on the y-axis
+
+```{r analyze_data_by_boro, echo=TRUE}
+
+# group by borough, and call this dataframe "incidents_by_boro"
+incidents_by_boro <- incidents_NYPD %>%
+  group_by(BORO, OCCUR_DATE) %>%     # Grouping by borough and date to find the incident count
+  summarise(incident_count = n_distinct(OCCUR_DATE))    
+  incidents_by_boro
+
+incidents_by_boro %>%
+  group_by(BORO) %>%     # Count incidents, grouped by borough
+  count(BORO)
+
+  # plot the number of incidents per boro as a bar chart
+  ggplot(incidents_by_boro, aes(x = BORO)) +
+  geom_bar()
+```
+It looks like Brooklyn and Bronx have the highest number of incidents within this time frame, and
+Staten Island has the smallest number of incidents. 
+
+Just from this data, it could be misleading to think that one borough is "safer" than the other. It could be that Staten Island has a smaller population, thus fewer incidents. 
+
+In this case, it could shed more light if we were to look at the population of each borough, and look at the 
+incident count as incidents per unit of total population.
+
+## Analysis 2 Conclusion - Age of Perpetrator vs.Age of Victim
+I want to find the relationship between the age of the perpetrator and the age of the victim
+
+First, I want to filter out "NA" and "UNKNOWN" values in age of perpetrator as well as victim, as well as random typos for the perpetrator age groups, such as 1020, 224, and 940. Then, group by the perpetrator age group and victim age group. I can cross tabulate between the age groups and plot to see which perpetrator age groups coincide with age groups of victims. 
+
+```{r analyze_data_by_age, echo=TRUE}
+
+age_relationship <- incidents_NYPD %>%
+  # Select the two columns of interest, and filter NAs, Unknowns, and known typos
+  select(PERP_AGE_GROUP, VIC_AGE_GROUP) %>%
+  filter(PERP_AGE_GROUP != "NA" & PERP_AGE_GROUP != "UNKNOWN" & VIC_AGE_GROUP != "NA" & VIC_AGE_GROUP != "UNKNOWN" & PERP_AGE_GROUP != "1020" &  PERP_AGE_GROUP != "224" & PERP_AGE_GROUP != "940") %>%
+  group_by(PERP_AGE_GROUP, VIC_AGE_GROUP) 
+  cross_tab = xtabs(~ PERP_AGE_GROUP + VIC_AGE_GROUP, data = age_relationship)     #Cross tabulate the age groups
+  df_cross_tab = as.data.frame.matrix(cross_tab)     # Makes a data frame from the ouput of the xtab
+  
+barplot(t(as.matrix(df_cross_tab)), legend=TRUE, xlab="Perpetrator Age Group",  ylab="Count of Victims per Age Group", beside=TRUE)
+
+```
+The vast majority of the victims are within the age groups 18-24 and 25-44.The lowest number of victims are in the higher age group, such as 45-65 and 65+. In the two highest counts of victims (the highest bars), the perpetrator is within the same age group as the victims. 
+
+## Modeling Incident Key by the date of occurance
+
+Since the incident keys are numerical and continuous data points, I predict that as dates increase, the incident keys should increase linearly. If there happens to be a jump in incident keys, this may mean that the data is missing in some places. If there are incident keys in numbers that don't make sense, this could mean that there was a mistake in assigning incident keys at that date.
+
+```{r model_incident_key_by_date, echo=TRUE}
+  data(incidents_NYPD)
+p <- ggplot(incidents_NYPD, aes(OCCUR_DATE, INCIDENT_KEY)) +
+  geom_point()
+p + geom_smooth(method = "lm")
+p
+```
+## Model Conclusion
+
+There is a spike around year approximately 2002 and 2008. This could mean that the incident keys assigned at that time were typos or mistakes, since at that time, incident keys numbers were much lower. 
+
+Around 2014, there is a large jump - a cliff - in incident numbers. This could either mean that the data collecting agency started assigning incident numbers much higher than preciously and continued to do so, or there is a large chunk of missing data during that time period.
+
+## Questions that arise from my analysis so far are:
+*How are perpetrator and victims counted? For example, if there was a fight where multiple people were involved, how do the perpetrator and victims get categorized?
+*Is there a pattern in the days of the week when incidents occur the most? 
+  *Do they happen to be in the weekdays? Weekends? Certain day of the week?
+*Is there a relationship between the sexes of the perpetrator and victim?
+
+### Project Step 4
+
+## Bias, and how I mitigated it
+Sources of bias can come from a variety of different places. Bias can occur during the data collection process, as well as the analysis process, which I was a part of. 
+
+Bias may have taken part during the data collection process. In the US and across the world, people have shown to have implicit bias against the Black population. This data set lists the races of victims as well as perpetrators. An easy question I could have pursued could have been "How many Black verses White perpetrators were invoved in incidents during this time period?" However, I tried to mitigate this by setting race aside, and looking at other stories that this data set was telling me, before going ahead and looking at the racial data. Once I am able to digest other aspects of this dataset first, and once I have a chance to do my background research of how this dataset was collected, only then I feel prepared to look at the racial data to make sure that I am trying my best to not carry my implicit bias through the analysis process.
+
+I also came into this project knowing that I had some bias that I had to try to mitigate. I had a bias that Bronx was the most "dangerous" bourough in NYC. I tried to mitigate this bias by listening to the data. I plotted the incident counts during this time period when this data was taken, and saw that Brooklyn and Bronx had a similar incident count. Though I did not take account of population density at this time, this exercise helped me practice how to hold my bias accountable. 
